@@ -150,6 +150,33 @@ h1 {
   padding: 1rem;
 }
 
+.media-grid {
+  align-items: start;
+}
+
+.media-card {
+  margin: 0;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+
+.media-card img,
+.media-card video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  background: #100d0c;
+}
+
+.media-card figcaption {
+  margin-top: 0.7rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 pre {
   overflow-x: auto;
   background: #161311;

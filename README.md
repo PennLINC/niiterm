@@ -146,22 +146,28 @@ niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz
 - `--width` affects one-shot rendering only. In the interactive viewer, use `z` to change the display size.
 - In interactive 4D playback, `b` lets you trade spatial detail for smoother animation.
 
-## Media Placeholders
+## Media
 
-Save screenshots and movies under `docs/assets/` so they are available to both the README and the docs site.
+### Screenshots
 
-- Screenshots: `docs/assets/screenshots/`
-- Movies or short clips: `docs/assets/movies/`
+WezTerm interactive T1:
 
-Suggested filenames:
+![WezTerm interactive T1](docs/assets/screenshots/wezterm-interactive-t1.png)
 
-- `docs/assets/screenshots/wezterm-interactive-t1.png`
-- `docs/assets/screenshots/wezterm-interactive-bold.png`
-- `docs/assets/screenshots/apple-terminal-blocks-t1.png`
-- `docs/assets/movies/wezterm-bold-playback.mp4`
-- `docs/assets/movies/wezterm-dwi-playback.mp4`
+WezTerm interactive BOLD:
 
-There is a companion note with the same instructions in [docs/assets/README.md](docs/assets/README.md).
+![WezTerm interactive BOLD](docs/assets/screenshots/wezterm-interactive-bold.png)
+
+Apple Terminal fallback rendering:
+
+![Apple Terminal fallback rendering](docs/assets/screenshots/apple-terminal-blocks-t1.png)
+
+### Playback clips
+
+- [WezTerm BOLD playback clip](docs/assets/movies/wezterm-bold-playback.mp4)
+- [WezTerm DWI playback clip](docs/assets/movies/wezterm-dwi-playback.mp4)
+
+Asset naming and storage guidance still lives in [docs/assets/README.md](docs/assets/README.md).
 
 ## CLI Help
 

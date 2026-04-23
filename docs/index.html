@@ -298,28 +298,68 @@ niiterm --window p1,p99 --colormap turbo sub-01_cbf.nii.gz</code></pre>
       <section id="media" class="card">
         <h2>Screenshots and Movies</h2>
         <p>
-          Save media under <code>docs/assets/</code> so the README and docs site
-          can both reference the same files.
+          The current screenshots and playback clips live under
+          <code>docs/assets/</code> and are shared by the README and docs site.
         </p>
 
-        <div class="grid">
-          <div class="placeholder">
-            <h3>Screenshot placeholder</h3>
-            <p>Save here:</p>
-            <p><code>docs/assets/screenshots/wezterm-interactive-t1.png</code></p>
-            <p>Suggested content: interactive T1 in WezTerm with the full header visible.</p>
-          </div>
+        <h3>Screenshots</h3>
+        <div class="grid media-grid">
+          <figure class="media-card">
+            <img
+              src="assets/screenshots/wezterm-interactive-t1.png"
+              alt="Interactive T1 rendering in WezTerm"
+            />
+            <figcaption>
+              WezTerm interactive T1 with the wrapped multi-line header.
+            </figcaption>
+          </figure>
 
-          <div class="placeholder">
-            <h3>Playback movie placeholder</h3>
-            <p>Save here:</p>
-            <p><code>docs/assets/movies/wezterm-bold-playback.mp4</code></p>
-            <p>Suggested content: BOLD playback showing size and playmode tradeoffs.</p>
-          </div>
+          <figure class="media-card">
+            <img
+              src="assets/screenshots/wezterm-interactive-bold.png"
+              alt="Interactive BOLD rendering in WezTerm"
+            />
+            <figcaption>
+              WezTerm interactive BOLD example for low-resolution 4D data.
+            </figcaption>
+          </figure>
+
+          <figure class="media-card">
+            <img
+              src="assets/screenshots/apple-terminal-blocks-t1.png"
+              alt="Apple Terminal block-rendered T1 fallback"
+            />
+            <figcaption>
+              Apple Terminal fallback rendering using block graphics only.
+            </figcaption>
+          </figure>
+        </div>
+
+        <h3>Movies</h3>
+        <div class="grid media-grid">
+          <figure class="media-card">
+            <video controls preload="metadata" muted playsinline loop>
+              <source src="assets/movies/wezterm-bold-playback.mp4" type="video/mp4" />
+              Your browser does not support MP4 playback.
+            </video>
+            <figcaption>
+              WezTerm BOLD playback clip showing dynamic changes over time.
+            </figcaption>
+          </figure>
+
+          <figure class="media-card">
+            <video controls preload="metadata" muted playsinline loop>
+              <source src="assets/movies/wezterm-dwi-playback.mp4" type="video/mp4" />
+              Your browser does not support MP4 playback.
+            </video>
+            <figcaption>
+              WezTerm DWI playback clip for diffusion volume stepping and playback.
+            </figcaption>
+          </figure>
         </div>
 
         <p>
-          Additional naming suggestions are documented in
+          Asset naming and storage guidance still lives in
           <code>docs/assets/README.md</code>.
         </p>
       </section>
