@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>niiterm Docs</title>
+    <meta
+      name="description"
+      content="Terminal-first NIfTI viewer for quick neuroimaging QC on SSH sessions, HPC nodes, and local terminals."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero__inner">
+        <p class="eyebrow">PennLINC</p>
+        <h1>niiterm</h1>
+        <p class="lede">
+          View NIfTI volumes directly in the terminal for fast neuroimaging QC.
+          Use it for one-shot slice checks, interactive scrubbing, or quick 4D
+          playback on SSH sessions, HPC nodes, and local workstations.
+        </p>
+        <div class="hero__actions">
+          <a href="#quick-start">Quick Start</a>
+          <a href="#terminals">Terminal Compatibility</a>
+          <a href="#cli">CLI Reference</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <nav class="toc" aria-label="Table of contents">
+        <a href="#quick-start">Quick start</a>
+        <a href="#terminals">Terminal compatibility</a>
+        <a href="#interactive">Interactive viewer</a>
+        <a href="#cli">CLI reference</a>
+        <a href="#media">Screenshots and movies</a>
+        <a href="#development">Development</a>
+      </nav>
+
+      <section id="quick-start" class="card">
+        <h2>Quick Start</h2>
+        <p>
+          Install with Rust and run directly from a local clone. A standard
+          <code>rustup</code> install is the recommended default. A micromamba
+          install is also supported when you want a self-contained HPC-friendly
+          setup.
+        </p>
+
+        <h3>Install with rustup</h3>
+        <pre><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+cargo install --path . --locked</code></pre>
+
+        <h3>Install inside micromamba</h3>
+        <pre><code>micromamba create -n niiterm -c conda-forge rust
+micromamba activate niiterm
+cargo install --path . --locked --root "$CONDA_PREFIX"</code></pre>
+
+        <h3>Common commands</h3>
+        <pre><code>niiterm sub-01_T1w.nii.gz
+niiterm --axis sagittal --slice 72 sub-01_T1w.nii.gz
+niiterm --interactive sub-01_T1w.nii.gz
+niiterm --interactive --play sub-01_task-rest_bold.nii.gz
+niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz</code></pre>
+
+        <div class="callout">
+          <strong>WezTerm note:</strong> on remote or HPC SSH sessions, the
+          interactive viewer may need <code>--protocol iterm</code> if
+          auto-detection chooses <code>kitty</code>.
+        </div>
+      </section>
+
+      <section id="terminals" class="card">
+        <h2>Terminal Compatibility</h2>
+        <p>
+          niiterm works best when the terminal supports a real graphics
+          protocol. When that is not available, it falls back to half-block
+          rendering.
+        </p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Terminal</th>
+              <th>Status</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>WezTerm</td>
+              <td>Explicitly tested</td>
+              <td>
+                Works well. Remote or HPC sessions may need
+                <code>--protocol iterm</code> for interactive mode.
+              </td>
+            </tr>
+            <tr>
+              <td>iTerm2</td>
+              <td>Expected to work</td>
+              <td>
+                Intended to work with graphics rendering, but not explicitly
+                re-verified in the current manual pass.
+              </td>
+            </tr>
+            <tr>
+              <td>Kitty</td>
+              <td>Expected to work</td>
+              <td>
+                Intended to work through the kitty graphics protocol, but not
+                explicitly re-verified in the current manual pass.
+              </td>
+            </tr>
+            <tr>
+              <td>Ghostty</td>
+              <td>Expected to work</td>
+              <td>
+                Likely fine through kitty-compatible rendering, but not
+                explicitly re-verified in the current manual pass.
+              </td>
+            </tr>
+            <tr>
+              <td>Sixel-capable terminals</td>
+              <td>Partially supported</td>
+              <td>
+                One-shot sixel output is supported. Interactive behavior is
+                less thoroughly tested.
+              </td>
+            </tr>
+            <tr>
+              <td>Apple Terminal.app</td>
+              <td>Fallback only</td>
+              <td>
+                Falls back to block rendering. Usable for rough QC, but much
+                lower fidelity than WezTerm, iTerm2, Kitty, or sixel graphics.
+              </td>
+            </tr>
+            <tr>
+              <td>Generic text-only terminals</td>
+              <td>Fallback only</td>
+              <td>Half-block rendering only.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Troubleshooting WezTerm</h3>
+        <p>
+          If interactive mode shows placeholder blocks and the header says
+          <code>proto=kitty</code>, rerun with:
+        </p>
+        <pre><code>niiterm --interactive --protocol iterm your_file.nii.gz</code></pre>
+      </section>
+
+      <section id="interactive" class="card">
+        <h2>Interactive Viewer</h2>
+        <p>
+          Interactive mode is designed for quick QC, not just still rendering.
+          You can scrub slices, switch axes, step through 4D volumes, and play
+          low-resolution timeseries while balancing detail against flicker.
+        </p>
+
+        <div class="grid">
+          <div>
+            <h3>Controls</h3>
+            <ul>
+              <li><code>h</code> / <code>l</code> or left/right: previous or next slice</li>
+              <li><code>j</code> / <code>k</code> or down/up: move slice by 10</li>
+              <li><code>H</code> / <code>L</code>: previous or next 4D volume</li>
+              <li><code>a</code>: cycle axis</li>
+              <li><code>c</code>: cycle colormap</li>
+              <li><code>w</code>: cycle window preset</li>
+              <li><code>z</code>: cycle display size</li>
+              <li><code>b</code>: cycle playback render mode</li>
+              <li><code>space</code>: play or pause a 4D series</li>
+              <li><code>+</code> / <code>-</code>: change playback FPS</li>
+              <li><code>g</code>: jump to the middle slice</li>
+              <li><code>?</code>: toggle help</li>
+              <li><code>q</code> or <code>esc</code>: quit</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3>Interactive size modes</h3>
+            <ul>
+              <li><code>native</code>: keep the source image close to its original resolution</li>
+              <li><code>comfortable</code>: moderate upscale for easier inspection</li>
+              <li><code>large</code>: larger upscale for low-resolution modalities like BOLD or ASL</li>
+            </ul>
+
+            <h3>Playback render modes</h3>
+            <ul>
+              <li><code>auto</code>: keep detail at native size, switch to smoother block playback at larger sizes</li>
+              <li><code>smooth</code>: prioritize smooth playback using block rendering</li>
+              <li><code>detail</code>: keep the richer graphics protocol during playback and accept more flicker</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="callout">
+          Modality-aware defaults are built in. Structural scans start with a
+          more moderate display size, while low-resolution 4D modalities like
+          BOLD, DWI, and ASL start larger.
+        </div>
+      </section>
+
+      <section id="cli" class="card">
+        <h2>CLI Reference</h2>
+        <p>
+          The built-in help is the quickest reference:
+        </p>
+        <pre><code>niiterm --help</code></pre>
+
+        <h3>Core options</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Option</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>FILE</code></td>
+              <td>Path to the <code>.nii</code> or <code>.nii.gz</code> file to inspect.</td>
+            </tr>
+            <tr>
+              <td><code>--interactive</code></td>
+              <td>Launch the interactive viewer instead of printing a single slice.</td>
+            </tr>
+            <tr>
+              <td><code>--axis &lt;axial|coronal|sagittal&gt;</code></td>
+              <td>Choose the initial viewing plane after RAS reorientation.</td>
+            </tr>
+            <tr>
+              <td><code>--slice N</code></td>
+              <td>Choose the initial slice index in reoriented voxel space.</td>
+            </tr>
+            <tr>
+              <td><code>--coord X,Y,Z</code></td>
+              <td>Choose the initial RAS voxel coordinate.</td>
+            </tr>
+            <tr>
+              <td><code>--mm X,Y,Z</code></td>
+              <td>Choose the initial world-space coordinate in millimeters.</td>
+            </tr>
+            <tr>
+              <td><code>--volume N</code></td>
+              <td>Choose the initial 4D volume index.</td>
+            </tr>
+            <tr>
+              <td><code>--play</code></td>
+              <td>Start 4D playback immediately in interactive mode.</td>
+            </tr>
+            <tr>
+              <td><code>--fps N</code></td>
+              <td>Set playback frame rate for interactive 4D playback.</td>
+            </tr>
+            <tr>
+              <td><code>--colormap</code></td>
+              <td>Override the modality-aware default colormap.</td>
+            </tr>
+            <tr>
+              <td><code>--window SPEC</code></td>
+              <td>
+                Window as <code>pLO,pHI</code>, raw <code>LO,HI</code>, or
+                <code>full</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>--width N</code></td>
+              <td>Requested width in terminal columns for one-shot rendering.</td>
+            </tr>
+            <tr>
+              <td><code>--protocol auto|kitty|iterm|sixel|blocks</code></td>
+              <td>Choose the rendering backend. Use <code>iterm</code> for WezTerm over SSH when needed.</td>
+            </tr>
+            <tr>
+              <td><code>--no-stats</code></td>
+              <td>Hide the metadata header above one-shot output.</td>
+            </tr>
+            <tr>
+              <td><code>-v</code>, <code>-vv</code></td>
+              <td>Increase logging verbosity.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Examples</h3>
+        <pre><code>niiterm sub-01_T1w.nii.gz
+niiterm --axis sagittal --slice 72 sub-01_T1w.nii.gz
+niiterm --coord 90,110,76 sub-01_T1w.nii.gz
+niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz
+niiterm --interactive --play --fps 12 sub-01_task-rest_bold.nii.gz
+niiterm --window p1,p99 --colormap turbo sub-01_cbf.nii.gz</code></pre>
+      </section>
+
+      <section id="media" class="card">
+        <h2>Screenshots and Movies</h2>
+        <p>
+          Save media under <code>docs/assets/</code> so the README and docs site
+          can both reference the same files.
+        </p>
+
+        <div class="grid">
+          <div class="placeholder">
+            <h3>Screenshot placeholder</h3>
+            <p>Save here:</p>
+            <p><code>docs/assets/screenshots/wezterm-interactive-t1.png</code></p>
+            <p>Suggested content: interactive T1 in WezTerm with the full header visible.</p>
+          </div>
+
+          <div class="placeholder">
+            <h3>Playback movie placeholder</h3>
+            <p>Save here:</p>
+            <p><code>docs/assets/movies/wezterm-bold-playback.mp4</code></p>
+            <p>Suggested content: BOLD playback showing size and playmode tradeoffs.</p>
+          </div>
+        </div>
+
+        <p>
+          Additional naming suggestions are documented in
+          <code>docs/assets/README.md</code>.
+        </p>
+      </section>
+
+      <section id="development" class="card">
+        <h2>Development</h2>
+        <pre><code>cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test</code></pre>
+      </section>
+    </main>
+  </body>
+</html>

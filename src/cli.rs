@@ -6,6 +6,30 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
+const LONG_ABOUT: &str = "\
+View NIfTI volumes directly in the terminal for fast neuroimaging QC.
+
+niiterm supports a quick one-shot mode for printing a single slice and an
+interactive mode for scrubbing slices, stepping through 4D data, and playing
+time series over SSH, on HPC nodes, or on local terminals with image protocol
+support.";
+
+const AFTER_LONG_HELP: &str = "\
+Examples:
+  niiterm sub-01_T1w.nii.gz
+  niiterm --axis sagittal --slice 72 sub-01_T1w.nii.gz
+  niiterm --coord 90,110,76 sub-01_T1w.nii.gz
+  niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz
+  niiterm --interactive --play --fps 12 sub-01_task-rest_bold.nii.gz
+  niiterm --window p1,p99 --colormap turbo sub-01_cbf.nii.gz
+
+Terminal notes:
+  WezTerm works well, but remote/HPC sessions may need --protocol iterm when
+  auto-detection picks kitty for the interactive viewer.
+  Apple Terminal falls back to block rendering only, so it is usable for rough
+  QC but will look lower resolution than WezTerm, iTerm2, Kitty, or sixel-capable
+  terminals.";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Axis {
     Axial,
@@ -125,54 +149,128 @@ impl fmt::Display for Coord3 {
 }
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "niiterm", version, about = "PennLINC NIfTI terminal viewer")]
+#[command(
+    name = "niiterm",
+    version,
+    about = "PennLINC NIfTI terminal viewer",
+    long_about = LONG_ABOUT,
+    after_long_help = AFTER_LONG_HELP
+)]
 pub struct Args {
-    #[arg(value_name = "FILE")]
+    #[arg(
+        value_name = "FILE",
+        help = "Path to the .nii/.nii.gz volume to inspect."
+    )]
     pub file: PathBuf,
 
-    #[arg(short = 'i', long = "interactive")]
+    #[arg(
+        short = 'i',
+        long = "interactive",
+        help = "Launch the interactive viewer instead of printing a single slice."
+    )]
     pub interactive: bool,
 
-    #[arg(short = 'a', long = "axis", default_value = "axial")]
+    #[arg(
+        short = 'a',
+        long = "axis",
+        default_value = "axial",
+        help = "Initial viewing plane after RAS reorientation."
+    )]
     pub axis: Axis,
 
-    #[arg(short = 's', long = "slice")]
+    #[arg(
+        short = 's',
+        long = "slice",
+        help = "Initial slice index in reoriented voxel space."
+    )]
     pub slice: Option<usize>,
 
-    #[arg(long = "coord", conflicts_with = "mm")]
+    #[arg(
+        long = "coord",
+        conflicts_with = "mm",
+        value_name = "X,Y,Z",
+        help = "Initial RAS voxel coordinate as comma-separated X,Y,Z."
+    )]
     pub coord: Option<Coord3>,
 
-    #[arg(long = "mm", conflicts_with = "coord")]
+    #[arg(
+        long = "mm",
+        conflicts_with = "coord",
+        value_name = "X,Y,Z",
+        help = "Initial world-space coordinate in millimeters, mapped through the affine."
+    )]
     pub mm: Option<Coord3>,
 
-    #[arg(short = 't', long = "volume", default_value_t = 0)]
+    #[arg(
+        short = 't',
+        long = "volume",
+        default_value_t = 0,
+        help = "Initial 4D volume index. Ignored for 3D images."
+    )]
     pub volume: usize,
 
-    #[arg(long = "play")]
+    #[arg(
+        long = "play",
+        help = "Start 4D playback immediately in interactive mode."
+    )]
     pub play: bool,
 
-    #[arg(long = "fps", default_value_t = 10)]
+    #[arg(
+        long = "fps",
+        default_value_t = 10,
+        help = "Playback frame rate for interactive 4D playback."
+    )]
     pub fps: u16,
 
-    #[arg(short = 'm', long = "colormap")]
+    #[arg(
+        short = 'm',
+        long = "colormap",
+        help = "Override the modality-aware default colormap."
+    )]
     pub colormap: Option<Colormap>,
 
-    #[arg(short = 'w', long = "window")]
+    #[arg(
+        short = 'w',
+        long = "window",
+        value_name = "SPEC",
+        help = "Window preset as `pLO,pHI`, raw `LO,HI`, or `full`."
+    )]
     pub window: Option<String>,
 
-    #[arg(long = "width")]
+    #[arg(
+        long = "width",
+        help = "Requested output width in terminal columns for one-shot rendering."
+    )]
     pub width: Option<u32>,
 
-    #[arg(long = "protocol", default_value = "auto")]
+    #[arg(
+        long = "protocol",
+        default_value = "auto",
+        help = "Rendering protocol. Use `iterm` for WezTerm over SSH/HPC if auto picks kitty."
+    )]
     pub protocol: Protocol,
 
-    #[arg(long = "stats", default_value_t = true, action = clap::ArgAction::SetTrue)]
+    #[arg(
+        long = "stats",
+        default_value_t = true,
+        action = clap::ArgAction::SetTrue,
+        help = "Print the metadata header above one-shot output."
+    )]
     pub stats: bool,
 
-    #[arg(long = "no-stats", overrides_with = "stats")]
+    #[arg(
+        long = "no-stats",
+        overrides_with = "stats",
+        help = "Suppress the metadata header above one-shot output."
+    )]
     pub no_stats: bool,
 
-    #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]
+    #[arg(
+        short = 'v',
+        long = "verbose",
+        action = clap::ArgAction::Count,
+        help = "Increase logging verbosity (`-v` = info, `-vv` = debug)."
+    )]
     pub verbose: u8,
 }
 

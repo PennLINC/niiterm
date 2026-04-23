@@ -146,28 +146,39 @@ impl AppState {
         })
     }
 
-    pub fn status_line(&self) -> String {
-        let mut line = format_stats_line(
+    pub fn header_lines(&self) -> Vec<String> {
+        let mut lines = vec![format_stats_line(
             &self.volume,
             self.modality,
             self.volume_index,
             self.dwi.as_ref(),
-        );
-        line.push_str(&format!(
-            "  axis={} slice={} cmap={} window={} size={} playmode={} proto={}",
+        )];
+
+        let mut view_line = format!(
+            "view axis={} slice={} cmap={} window={} size={} proto={}",
             self.axis.label(),
             self.slice,
             self.colormap.label(),
             self.window_mode,
             self.size_mode.label(),
-            self.playback_render_mode.label(),
             protocol_label(self.protocol_type)
-        ));
-        line
+        );
+
+        if self.volume.nvols() > 1 {
+            view_line.push_str(&format!(
+                " fps={} play={} playmode={}",
+                self.fps,
+                if self.playing { "on" } else { "paused" },
+                self.playback_render_mode.label()
+            ));
+        }
+
+        lines.push(view_line);
+        lines
     }
 
     pub fn controls_hint(&self) -> &'static str {
-        "h/l slices  j/k +/-10  H/L volumes  a axis  c colormap  w window  z size  b playback  space play  ? help  q quit"
+        "h/l slices  j/k +/-10  H/L volumes  a axis  c colormap  w window  z size  b playmode  space play  ? help  q quit"
     }
 
     pub fn poll_timeout(&self, elapsed: Duration) -> Duration {

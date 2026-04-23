@@ -11,4 +11,6 @@ fn help_mentions_interactive_mode() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("--interactive"));
     assert!(stdout.contains("--protocol"));
+    assert!(stdout.contains("Examples:"));
+    assert!(stdout.contains("WezTerm"));
 }
