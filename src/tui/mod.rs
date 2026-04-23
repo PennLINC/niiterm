@@ -12,14 +12,19 @@ use crate::cli::Args;
 use self::app::AppState;
 
 pub fn run(args: Args) -> Result<()> {
+    let picker = AppState::build_picker(args.protocol);
     let mut terminal = init();
-    let result = run_app(&mut terminal, args);
+    let result = run_app(&mut terminal, args, picker);
     restore();
     result
 }
 
-fn run_app(terminal: &mut DefaultTerminal, args: Args) -> Result<()> {
-    let mut app = AppState::new(args)?;
+fn run_app(
+    terminal: &mut DefaultTerminal,
+    args: Args,
+    picker: ratatui_image::picker::Picker,
+) -> Result<()> {
+    let mut app = AppState::new(args, picker)?;
     let mut last_tick = Instant::now();
 
     loop {

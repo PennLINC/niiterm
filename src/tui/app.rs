@@ -30,13 +30,20 @@ pub struct AppState {
     pub window_preset_index: usize,
     pub image: StatefulProtocol,
     pub picker: Picker,
+    pub protocol_type: ProtocolType,
     pub should_quit: bool,
     pub show_help: bool,
     pub window_cache: WindowCache,
 }
 
 impl AppState {
-    pub fn new(args: Args) -> Result<Self> {
+    pub fn build_picker(protocol: Protocol) -> Picker {
+        let mut picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
+        apply_protocol_override(&mut picker, protocol);
+        picker
+    }
+
+    pub fn new(args: Args, mut picker: Picker) -> Result<Self> {
         let volume = load_nifti(&args.file)?;
         let modality = Modality::detect(&args.file);
         let dwi = if modality == Modality::Dwi {
@@ -64,8 +71,8 @@ impl AppState {
             .transpose()?
             .unwrap_or_else(|| modality.default_window());
 
-        let mut picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
         apply_protocol_override(&mut picker, args.protocol);
+        let protocol_type = picker.protocol_type();
 
         let mut window_cache = WindowCache::default();
         let initial = build_image(
@@ -93,6 +100,7 @@ impl AppState {
             window_preset_index: preset_index(window_mode),
             image,
             picker,
+            protocol_type,
             should_quit: false,
             show_help: false,
             window_cache,
@@ -107,11 +115,12 @@ impl AppState {
             self.dwi.as_ref(),
         );
         line.push_str(&format!(
-            "  axis={} slice={} cmap={} window={}",
+            "  axis={} slice={} cmap={} window={} proto={}",
             self.axis.label(),
             self.slice,
             self.colormap.label(),
-            self.window_mode
+            self.window_mode,
+            protocol_label(self.protocol_type)
         ));
         line
     }
@@ -220,6 +229,7 @@ impl AppState {
             &mut self.window_cache,
         );
         self.image = self.picker.new_resize_protocol(next);
+        self.protocol_type = self.picker.protocol_type();
         Ok(())
     }
 }
@@ -258,4 +268,13 @@ fn preset_index(mode: WindowMode) -> usize {
         .iter()
         .position(|preset| preset.to_mode() == mode)
         .unwrap_or(0)
+}
+
+fn protocol_label(protocol: ProtocolType) -> &'static str {
+    match protocol {
+        ProtocolType::Halfblocks => "blocks",
+        ProtocolType::Sixel => "sixel",
+        ProtocolType::Kitty => "kitty",
+        ProtocolType::Iterm2 => "iterm2",
+    }
 }
