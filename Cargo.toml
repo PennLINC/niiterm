@@ -1,0 +1,30 @@
+[package]
+name = "niiterm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Terminal-first NIfTI viewer for fast neuroimaging QC on SSH and HPC nodes"
+license = "BSD-3-Clause"
+repository = "https://github.com/PennLINC/niiterm"
+readme = "README.md"
+keywords = ["nifti", "neuroimaging", "terminal", "cli", "qc"]
+categories = ["command-line-utilities", "science"]
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+colorous = "1.0"
+crossterm = "0.29"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+nalgebra = "0.33"
+ndarray = "0.16"
+nifti = { version = "0.17", features = ["nalgebra_affine", "ndarray_volumes"] }
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
+ratatui-image = { version = "10.0", default-features = false, features = ["crossterm", "image-defaults"] }
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+viuer = { version = "0.11", features = ["icy_sixel"] }
+
+[dev-dependencies]
+tempfile = "3.14"
