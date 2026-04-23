@@ -14,8 +14,60 @@ It supports:
 
 ## Install
 
+I recommend installing `niiterm` with a normal Rust toolchain managed by `rustup`, not inside a micromamba environment, unless you specifically want an isolated user-space install on HPC.
+
+Why:
+
+- `niiterm` is a Rust CLI, not a Python package
+- `cargo install` is the native install path
+- a plain Rust install keeps startup and shell integration simple
+- micromamba is still a good option on shared systems where you do not want to touch your base shell setup
+
+### Recommended: rustup + cargo
+
+Install Rust once:
+
 ```bash
-cargo install --path .
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+```
+
+Then, from a local clone of this repo:
+
+```bash
+cargo install --path . --locked
+```
+
+That installs `niiterm` into `~/.cargo/bin`, which should be on your `PATH`.
+
+### Micromamba / HPC-friendly option
+
+If you want `niiterm` fully contained inside a micromamba environment, that works too:
+
+```bash
+micromamba create -n niiterm -c conda-forge rust
+micromamba activate niiterm
+cargo install --path . --locked --root "$CONDA_PREFIX"
+```
+
+That puts the `niiterm` binary under the active environment instead of your global cargo bin directory.
+
+If `micromamba activate` is not set up in your shell yet, initialize it first:
+
+```bash
+micromamba shell init -s zsh -r ~/micromamba
+exec zsh
+```
+
+### Which one should I use?
+
+- Use `rustup` if this is your laptop/workstation and you are happy to have Rust tools available generally.
+- Use micromamba if you want a self-contained install, you are on an HPC system, or you already manage CLI tools that way.
+
+### Verify
+
+```bash
+niiterm --help
 ```
 
 ## Usage
