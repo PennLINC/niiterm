@@ -1,4 +1,5 @@
 use std::time::Duration;
+use std::{env, ffi::OsString};
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -40,6 +41,15 @@ impl AppState {
     pub fn build_picker(protocol: Protocol) -> Picker {
         let mut picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
         apply_protocol_override(&mut picker, protocol);
+
+        if matches!(protocol, Protocol::Auto) {
+            if is_wezterm() {
+                picker.set_protocol_type(ProtocolType::Iterm2);
+            } else if is_apple_terminal() {
+                picker.set_protocol_type(ProtocolType::Halfblocks);
+            }
+        }
+
         picker
     }
 
@@ -277,4 +287,29 @@ fn protocol_label(protocol: ProtocolType) -> &'static str {
         ProtocolType::Kitty => "kitty",
         ProtocolType::Iterm2 => "iterm2",
     }
+}
+
+fn is_wezterm() -> bool {
+    env_has_nonempty("WEZTERM_EXECUTABLE")
+        || env_var_contains("TERM_PROGRAM", "WezTerm")
+        || env_var_contains("LC_TERMINAL", "WezTerm")
+}
+
+fn is_apple_terminal() -> bool {
+    env_var_contains("TERM_PROGRAM", "Apple_Terminal")
+        || env_var_contains("LC_TERMINAL", "Apple_Terminal")
+}
+
+fn env_has_nonempty(key: &str) -> bool {
+    env::var_os(key).is_some_and(|value| !value.is_empty())
+}
+
+fn env_var_contains(key: &str, needle: &str) -> bool {
+    env::var_os(key)
+        .and_then(os_string_to_string)
+        .is_some_and(|value| value.contains(needle))
+}
+
+fn os_string_to_string(value: OsString) -> Option<String> {
+    value.into_string().ok()
 }
