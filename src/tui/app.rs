@@ -30,6 +30,7 @@ pub struct AppState {
     pub window_mode: WindowMode,
     pub window_preset_index: usize,
     pub size_mode: SizeMode,
+    pub playback_render_mode: PlaybackRenderMode,
     pub image: StatefulProtocol,
     pub picker: Picker,
     pub preferred_protocol_type: ProtocolType,
@@ -93,6 +94,7 @@ impl AppState {
             .transpose()?
             .unwrap_or_else(|| modality.default_window());
         let size_mode = SizeMode::default_for_modality(modality);
+        let playback_render_mode = PlaybackRenderMode::Auto;
 
         apply_protocol_override(&mut picker, args.protocol);
         let preferred_protocol_type = picker.protocol_type();
@@ -112,8 +114,10 @@ impl AppState {
         );
         picker.set_protocol_type(effective_protocol_type(
             preferred_protocol_type,
+            playback_render_mode,
             args.play,
             volume.nvols(),
+            size_mode,
         ));
         let image = picker.new_resize_protocol(initial);
         let protocol_type = picker.protocol_type();
@@ -131,6 +135,7 @@ impl AppState {
             window_mode,
             window_preset_index: preset_index(window_mode),
             size_mode,
+            playback_render_mode,
             image,
             picker,
             preferred_protocol_type,
@@ -149,19 +154,20 @@ impl AppState {
             self.dwi.as_ref(),
         );
         line.push_str(&format!(
-            "  axis={} slice={} cmap={} window={} size={} proto={}",
+            "  axis={} slice={} cmap={} window={} size={} playmode={} proto={}",
             self.axis.label(),
             self.slice,
             self.colormap.label(),
             self.window_mode,
             self.size_mode.label(),
+            self.playback_render_mode.label(),
             protocol_label(self.protocol_type)
         ));
         line
     }
 
     pub fn controls_hint(&self) -> &'static str {
-        "h/l slices  j/k +/-10  H/L volumes  a axis  c colormap  w window  z size  space play  ? help  q quit"
+        "h/l slices  j/k +/-10  H/L volumes  a axis  c colormap  w window  z size  b playback  space play  ? help  q quit"
     }
 
     pub fn poll_timeout(&self, elapsed: Duration) -> Duration {
@@ -224,6 +230,10 @@ impl AppState {
                 self.size_mode = self.size_mode.next();
                 self.refresh_image()?;
             }
+            KeyCode::Char('b') => {
+                self.playback_render_mode = self.playback_render_mode.next();
+                self.refresh_image()?;
+            }
             KeyCode::Char('g') => {
                 self.slice = self.volume.middle_slice(self.axis.index());
                 self.refresh_image()?;
@@ -282,8 +292,10 @@ impl AppState {
     fn sync_picker_protocol(&mut self) {
         self.picker.set_protocol_type(effective_protocol_type(
             self.preferred_protocol_type,
+            self.playback_render_mode,
             self.playing,
             self.volume.nvols(),
+            self.size_mode,
         ));
     }
 }
@@ -338,11 +350,24 @@ fn protocol_label(protocol: ProtocolType) -> &'static str {
     }
 }
 
-fn effective_protocol_type(preferred: ProtocolType, playing: bool, nvols: usize) -> ProtocolType {
-    if playing && nvols > 1 && preferred != ProtocolType::Halfblocks {
-        ProtocolType::Halfblocks
-    } else {
-        preferred
+fn effective_protocol_type(
+    preferred: ProtocolType,
+    playback_render_mode: PlaybackRenderMode,
+    playing: bool,
+    nvols: usize,
+    size_mode: SizeMode,
+) -> ProtocolType {
+    if !playing || nvols <= 1 {
+        return preferred;
+    }
+
+    match playback_render_mode {
+        PlaybackRenderMode::Smooth => ProtocolType::Halfblocks,
+        PlaybackRenderMode::Detail => preferred,
+        PlaybackRenderMode::Auto => match size_mode {
+            SizeMode::Native => preferred,
+            SizeMode::Comfortable | SizeMode::Large => ProtocolType::Halfblocks,
+        },
     }
 }
 
@@ -383,6 +408,31 @@ impl SizeMode {
             Self::Native => None,
             Self::Comfortable => Some(256),
             Self::Large => Some(384),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaybackRenderMode {
+    Auto,
+    Smooth,
+    Detail,
+}
+
+impl PlaybackRenderMode {
+    fn next(self) -> Self {
+        match self {
+            Self::Auto => Self::Smooth,
+            Self::Smooth => Self::Detail,
+            Self::Detail => Self::Auto,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Smooth => "smooth",
+            Self::Detail => "detail",
         }
     }
 }
@@ -460,23 +510,87 @@ mod tests {
     #[test]
     fn playback_prefers_halfblocks_for_4d_series() {
         assert_eq!(
-            effective_protocol_type(ProtocolType::Iterm2, true, 1200),
+            effective_protocol_type(
+                ProtocolType::Iterm2,
+                PlaybackRenderMode::Smooth,
+                true,
+                1200,
+                SizeMode::Large,
+            ),
             ProtocolType::Halfblocks
         );
         assert_eq!(
-            effective_protocol_type(ProtocolType::Kitty, true, 1200),
+            effective_protocol_type(
+                ProtocolType::Kitty,
+                PlaybackRenderMode::Smooth,
+                true,
+                1200,
+                SizeMode::Large,
+            ),
             ProtocolType::Halfblocks
         );
         assert_eq!(
-            effective_protocol_type(ProtocolType::Halfblocks, true, 1200),
+            effective_protocol_type(
+                ProtocolType::Halfblocks,
+                PlaybackRenderMode::Smooth,
+                true,
+                1200,
+                SizeMode::Large,
+            ),
             ProtocolType::Halfblocks
         );
         assert_eq!(
-            effective_protocol_type(ProtocolType::Iterm2, false, 1200),
+            effective_protocol_type(
+                ProtocolType::Iterm2,
+                PlaybackRenderMode::Smooth,
+                false,
+                1200,
+                SizeMode::Large,
+            ),
             ProtocolType::Iterm2
         );
         assert_eq!(
-            effective_protocol_type(ProtocolType::Iterm2, true, 1),
+            effective_protocol_type(
+                ProtocolType::Iterm2,
+                PlaybackRenderMode::Smooth,
+                true,
+                1,
+                SizeMode::Large,
+            ),
+            ProtocolType::Iterm2
+        );
+    }
+
+    #[test]
+    fn auto_and_detail_modes_preserve_more_detail_when_requested() {
+        assert_eq!(
+            effective_protocol_type(
+                ProtocolType::Iterm2,
+                PlaybackRenderMode::Auto,
+                true,
+                1200,
+                SizeMode::Native,
+            ),
+            ProtocolType::Iterm2
+        );
+        assert_eq!(
+            effective_protocol_type(
+                ProtocolType::Iterm2,
+                PlaybackRenderMode::Auto,
+                true,
+                1200,
+                SizeMode::Large,
+            ),
+            ProtocolType::Halfblocks
+        );
+        assert_eq!(
+            effective_protocol_type(
+                ProtocolType::Iterm2,
+                PlaybackRenderMode::Detail,
+                true,
+                1200,
+                SizeMode::Large,
+            ),
             ProtocolType::Iterm2
         );
     }
