@@ -32,6 +32,7 @@ pub struct AppState {
     pub size_mode: SizeMode,
     pub image: StatefulProtocol,
     pub picker: Picker,
+    pub preferred_protocol_type: ProtocolType,
     pub protocol_type: ProtocolType,
     pub should_quit: bool,
     pub show_help: bool,
@@ -94,7 +95,7 @@ impl AppState {
         let size_mode = SizeMode::default_for_modality(modality);
 
         apply_protocol_override(&mut picker, args.protocol);
-        let protocol_type = picker.protocol_type();
+        let preferred_protocol_type = picker.protocol_type();
 
         let mut window_cache = WindowCache::default();
         let initial = build_image(
@@ -109,7 +110,13 @@ impl AppState {
             },
             &mut window_cache,
         );
+        picker.set_protocol_type(effective_protocol_type(
+            preferred_protocol_type,
+            args.play,
+            volume.nvols(),
+        ));
         let image = picker.new_resize_protocol(initial);
+        let protocol_type = picker.protocol_type();
 
         Ok(Self {
             volume,
@@ -126,6 +133,7 @@ impl AppState {
             size_mode,
             image,
             picker,
+            preferred_protocol_type,
             protocol_type,
             should_quit: false,
             show_help: false,
@@ -197,7 +205,10 @@ impl AppState {
                 self.slice = self.volume.middle_slice(self.axis.index());
                 self.refresh_image()?;
             }
-            KeyCode::Char(' ') => self.playing = !self.playing,
+            KeyCode::Char(' ') => {
+                self.playing = !self.playing;
+                self.refresh_image()?;
+            }
             KeyCode::Char('+') | KeyCode::Char('=') => self.fps = (self.fps + 1).min(60),
             KeyCode::Char('-') => self.fps = self.fps.saturating_sub(1).max(1),
             KeyCode::Char('c') => {
@@ -211,6 +222,7 @@ impl AppState {
             }
             KeyCode::Char('z') => {
                 self.size_mode = self.size_mode.next();
+                self.refresh_image()?;
             }
             KeyCode::Char('g') => {
                 self.slice = self.volume.middle_slice(self.axis.index());
@@ -249,6 +261,7 @@ impl AppState {
     }
 
     fn refresh_image(&mut self) -> Result<()> {
+        self.sync_picker_protocol();
         let next = build_image(
             &self.volume,
             RenderOptions {
@@ -264,6 +277,14 @@ impl AppState {
         self.image = self.picker.new_resize_protocol(next);
         self.protocol_type = self.picker.protocol_type();
         Ok(())
+    }
+
+    fn sync_picker_protocol(&mut self) {
+        self.picker.set_protocol_type(effective_protocol_type(
+            self.preferred_protocol_type,
+            self.playing,
+            self.volume.nvols(),
+        ));
     }
 }
 
@@ -314,6 +335,14 @@ fn protocol_label(protocol: ProtocolType) -> &'static str {
         ProtocolType::Sixel => "sixel",
         ProtocolType::Kitty => "kitty",
         ProtocolType::Iterm2 => "iterm2",
+    }
+}
+
+fn effective_protocol_type(preferred: ProtocolType, playing: bool, nvols: usize) -> ProtocolType {
+    if playing && nvols > 1 && preferred != ProtocolType::Halfblocks {
+        ProtocolType::Halfblocks
+    } else {
+        preferred
     }
 }
 
@@ -415,4 +444,40 @@ fn env_var_contains(key: &str, needle: &str) -> bool {
 
 fn os_string_to_string(value: OsString) -> Option<String> {
     value.into_string().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn size_mode_cycles_through_all_variants() {
+        assert_eq!(SizeMode::Native.next(), SizeMode::Comfortable);
+        assert_eq!(SizeMode::Comfortable.next(), SizeMode::Large);
+        assert_eq!(SizeMode::Large.next(), SizeMode::Native);
+    }
+
+    #[test]
+    fn playback_prefers_halfblocks_for_4d_series() {
+        assert_eq!(
+            effective_protocol_type(ProtocolType::Iterm2, true, 1200),
+            ProtocolType::Halfblocks
+        );
+        assert_eq!(
+            effective_protocol_type(ProtocolType::Kitty, true, 1200),
+            ProtocolType::Halfblocks
+        );
+        assert_eq!(
+            effective_protocol_type(ProtocolType::Halfblocks, true, 1200),
+            ProtocolType::Halfblocks
+        );
+        assert_eq!(
+            effective_protocol_type(ProtocolType::Iterm2, false, 1200),
+            ProtocolType::Iterm2
+        );
+        assert_eq!(
+            effective_protocol_type(ProtocolType::Iterm2, true, 1),
+            ProtocolType::Iterm2
+        );
+    }
 }
