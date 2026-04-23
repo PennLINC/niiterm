@@ -6,7 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui_image::{
     picker::{Picker, ProtocolType},
     protocol::StatefulProtocol,
-    StatefulImage,
+    Resize, StatefulImage,
 };
 
 use crate::cli::{Args, Axis, Colormap, Protocol};
@@ -29,6 +29,7 @@ pub struct AppState {
     pub colormap: Colormap,
     pub window_mode: WindowMode,
     pub window_preset_index: usize,
+    pub size_mode: SizeMode,
     pub image: StatefulProtocol,
     pub picker: Picker,
     pub protocol_type: ProtocolType,
@@ -80,6 +81,7 @@ impl AppState {
             .map(str::parse::<WindowMode>)
             .transpose()?
             .unwrap_or_else(|| modality.default_window());
+        let size_mode = SizeMode::default_for_modality(modality);
 
         apply_protocol_override(&mut picker, args.protocol);
         let protocol_type = picker.protocol_type();
@@ -108,6 +110,7 @@ impl AppState {
             colormap,
             window_mode,
             window_preset_index: preset_index(window_mode),
+            size_mode,
             image,
             picker,
             protocol_type,
@@ -125,18 +128,19 @@ impl AppState {
             self.dwi.as_ref(),
         );
         line.push_str(&format!(
-            "  axis={} slice={} cmap={} window={} proto={}",
+            "  axis={} slice={} cmap={} window={} size={} proto={}",
             self.axis.label(),
             self.slice,
             self.colormap.label(),
             self.window_mode,
+            self.size_mode.label(),
             protocol_label(self.protocol_type)
         ));
         line
     }
 
     pub fn controls_hint(&self) -> &'static str {
-        "h/l slices  j/k +/-10  H/L volumes  a axis  c colormap  w window  space play  ? help  q quit"
+        "h/l slices  j/k +/-10  H/L volumes  a axis  c colormap  w window  z size  space play  ? help  q quit"
     }
 
     pub fn poll_timeout(&self, elapsed: Duration) -> Duration {
@@ -192,6 +196,9 @@ impl AppState {
                 self.window_mode = WindowPreset::ALL[self.window_preset_index].to_mode();
                 self.refresh_image()?;
             }
+            KeyCode::Char('z') => {
+                self.size_mode = self.size_mode.next();
+            }
             KeyCode::Char('g') => {
                 self.slice = self.volume.middle_slice(self.axis.index());
                 self.refresh_image()?;
@@ -211,7 +218,7 @@ impl AppState {
     }
 
     pub fn image_widget(&self) -> StatefulImage<StatefulProtocol> {
-        StatefulImage::default()
+        StatefulImage::new().resize(self.size_mode.to_resize())
     }
 
     fn step_slice(&mut self, delta: isize) -> Result<()> {
@@ -286,6 +293,42 @@ fn protocol_label(protocol: ProtocolType) -> &'static str {
         ProtocolType::Sixel => "sixel",
         ProtocolType::Kitty => "kitty",
         ProtocolType::Iterm2 => "iterm2",
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SizeMode {
+    Fit,
+    Scale,
+}
+
+impl SizeMode {
+    fn default_for_modality(modality: Modality) -> Self {
+        match modality {
+            Modality::Bold | Modality::Dwi | Modality::Asl => Self::Scale,
+            Modality::T1 | Modality::T2 | Modality::Unknown => Self::Fit,
+        }
+    }
+
+    fn next(self) -> Self {
+        match self {
+            Self::Fit => Self::Scale,
+            Self::Scale => Self::Fit,
+        }
+    }
+
+    fn to_resize(self) -> Resize {
+        match self {
+            Self::Fit => Resize::Fit(None),
+            Self::Scale => Resize::Scale(None),
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Fit => "fit",
+            Self::Scale => "scale",
+        }
     }
 }
 
