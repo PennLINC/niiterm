@@ -49,12 +49,16 @@
         </p>
 
         <h3>Install with rustup</h3>
-        <pre><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        <pre><code>git clone https://github.com/PennLINC/niiterm.git
+cd niiterm
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 cargo install --path . --locked</code></pre>
 
         <h3>Install inside micromamba</h3>
-        <pre><code>micromamba create -n niiterm -c conda-forge rust
+        <pre><code>git clone https://github.com/PennLINC/niiterm.git
+cd niiterm
+micromamba create -n niiterm -c conda-forge rust
 micromamba activate niiterm
 cargo install --path . --locked --root "$CONDA_PREFIX"</code></pre>
 

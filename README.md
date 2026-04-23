@@ -27,9 +27,11 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
-Then, from a local clone of this repo:
+Clone the repository and install:
 
 ```bash
+git clone https://github.com/PennLINC/niiterm.git
+cd niiterm
 cargo install --path . --locked
 ```
 
@@ -40,6 +42,8 @@ That installs `niiterm` into `~/.cargo/bin`.
 If you want `niiterm` fully contained inside a micromamba environment:
 
 ```bash
+git clone https://github.com/PennLINC/niiterm.git
+cd niiterm
 micromamba create -n niiterm -c conda-forge rust
 micromamba activate niiterm
 cargo install --path . --locked --root "$CONDA_PREFIX"
