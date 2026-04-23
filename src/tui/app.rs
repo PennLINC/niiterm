@@ -38,6 +38,16 @@ pub struct AppState {
     pub window_cache: WindowCache,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RenderOptions {
+    axis: Axis,
+    slice: usize,
+    volume_index: usize,
+    colormap: Colormap,
+    window_mode: WindowMode,
+    size_mode: SizeMode,
+}
+
 impl AppState {
     pub fn build_picker(protocol: Protocol) -> Picker {
         let mut picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
@@ -89,11 +99,14 @@ impl AppState {
         let mut window_cache = WindowCache::default();
         let initial = build_image(
             &volume,
-            axis,
-            slice,
-            volume_index,
-            colormap,
-            window_mode,
+            RenderOptions {
+                axis,
+                slice,
+                volume_index,
+                colormap,
+                window_mode,
+                size_mode,
+            },
             &mut window_cache,
         );
         let image = picker.new_resize_protocol(initial);
@@ -218,7 +231,7 @@ impl AppState {
     }
 
     pub fn image_widget(&self) -> StatefulImage<StatefulProtocol> {
-        StatefulImage::new().resize(self.size_mode.to_resize())
+        StatefulImage::new().resize(Resize::Fit(None))
     }
 
     fn step_slice(&mut self, delta: isize) -> Result<()> {
@@ -238,11 +251,14 @@ impl AppState {
     fn refresh_image(&mut self) -> Result<()> {
         let next = build_image(
             &self.volume,
-            self.axis,
-            self.slice,
-            self.volume_index,
-            self.colormap,
-            self.window_mode,
+            RenderOptions {
+                axis: self.axis,
+                slice: self.slice,
+                volume_index: self.volume_index,
+                colormap: self.colormap,
+                window_mode: self.window_mode,
+                size_mode: self.size_mode,
+            },
             &mut self.window_cache,
         );
         self.image = self.picker.new_resize_protocol(next);
@@ -253,20 +269,25 @@ impl AppState {
 
 fn build_image(
     volume: &LoadedVolume,
-    axis: Axis,
-    slice: usize,
-    volume_index: usize,
-    colormap: Colormap,
-    window_mode: WindowMode,
+    options: RenderOptions,
     cache: &mut WindowCache,
 ) -> image::DynamicImage {
     let current_window = cache.get_or_insert(
-        volume_index,
-        window_mode,
-        volume.data.slice(ndarray::s![.., .., .., volume_index]),
+        options.volume_index,
+        options.window_mode,
+        volume
+            .data
+            .slice(ndarray::s![.., .., .., options.volume_index]),
     );
-    let slice_data = extract_slice(volume, axis, slice, volume_index);
-    render_slice_image(&slice_data, axis, volume.pixdim, colormap, current_window)
+    let slice_data = extract_slice(volume, options.axis, options.slice, options.volume_index);
+    let image = render_slice_image(
+        &slice_data,
+        options.axis,
+        volume.pixdim,
+        options.colormap,
+        current_window,
+    );
+    upscale_for_tui(image, options.size_mode)
 }
 
 fn apply_protocol_override(picker: &mut Picker, protocol: Protocol) {
@@ -298,38 +319,77 @@ fn protocol_label(protocol: ProtocolType) -> &'static str {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeMode {
-    Fit,
-    Scale,
+    Native,
+    Comfortable,
+    Large,
 }
 
 impl SizeMode {
     fn default_for_modality(modality: Modality) -> Self {
         match modality {
-            Modality::Bold | Modality::Dwi | Modality::Asl => Self::Scale,
-            Modality::T1 | Modality::T2 | Modality::Unknown => Self::Fit,
+            Modality::Bold | Modality::Dwi | Modality::Asl => Self::Large,
+            Modality::T1 | Modality::T2 => Self::Comfortable,
+            Modality::Unknown => Self::Comfortable,
         }
     }
 
     fn next(self) -> Self {
         match self {
-            Self::Fit => Self::Scale,
-            Self::Scale => Self::Fit,
-        }
-    }
-
-    fn to_resize(self) -> Resize {
-        match self {
-            Self::Fit => Resize::Fit(None),
-            Self::Scale => Resize::Scale(None),
+            Self::Native => Self::Comfortable,
+            Self::Comfortable => Self::Large,
+            Self::Large => Self::Native,
         }
     }
 
     fn label(self) -> &'static str {
         match self {
-            Self::Fit => "fit",
-            Self::Scale => "scale",
+            Self::Native => "native",
+            Self::Comfortable => "comfortable",
+            Self::Large => "large",
         }
     }
+
+    fn target_min_dimension(self) -> Option<u32> {
+        match self {
+            Self::Native => None,
+            Self::Comfortable => Some(256),
+            Self::Large => Some(384),
+        }
+    }
+}
+
+fn upscale_for_tui(image: image::DynamicImage, size_mode: SizeMode) -> image::DynamicImage {
+    let Some(target_min) = size_mode.target_min_dimension() else {
+        return image;
+    };
+
+    let width = image.width().max(1);
+    let height = image.height().max(1);
+    let min_dim = width.min(height);
+    if min_dim >= target_min {
+        return image;
+    }
+
+    const MAX_DIMENSION: u32 = 1024;
+
+    let scale = target_min as f32 / min_dim as f32;
+    let mut target_width = ((width as f32 * scale).round() as u32).max(1);
+    let mut target_height = ((height as f32 * scale).round() as u32).max(1);
+
+    if target_width > MAX_DIMENSION || target_height > MAX_DIMENSION {
+        let downscale = f32::min(
+            MAX_DIMENSION as f32 / target_width as f32,
+            MAX_DIMENSION as f32 / target_height as f32,
+        );
+        target_width = ((target_width as f32 * downscale).round() as u32).max(1);
+        target_height = ((target_height as f32 * downscale).round() as u32).max(1);
+    }
+
+    image.resize_exact(
+        target_width,
+        target_height,
+        image::imageops::FilterType::Lanczos3,
+    )
 }
 
 fn is_wezterm() -> bool {
