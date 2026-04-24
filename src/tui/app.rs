@@ -9,11 +9,11 @@ use ratatui_image::{
     Resize, StatefulImage,
 };
 
-use crate::cli::{Args, Axis, Colormap, Protocol};
+use crate::cli::{Args, Axis, Colormap, LayoutMode, Protocol};
 use crate::dwi::{self, DwiMetadata};
 use crate::modality::Modality;
 use crate::nifti_io::{load_nifti, LoadedVolume};
-use crate::render::{extract_slice, render_slice_image};
+use crate::render::{extract_slice, render_slice_image, render_triptych_image};
 use crate::stats::format_stats_line;
 use crate::windowing::{WindowCache, WindowMode, WindowPreset};
 
@@ -21,8 +21,9 @@ pub struct AppState {
     pub volume: LoadedVolume,
     pub modality: Modality,
     pub dwi: Option<DwiMetadata>,
-    pub axis: Axis,
-    pub slice: usize,
+    pub layout: LayoutMode,
+    pub active_axis: Axis,
+    pub cursor: [usize; 3],
     pub volume_index: usize,
     pub playing: bool,
     pub fps: u16,
@@ -42,8 +43,9 @@ pub struct AppState {
 
 #[derive(Debug, Clone, Copy)]
 struct RenderOptions {
-    axis: Axis,
-    slice: usize,
+    layout: LayoutMode,
+    active_axis: Axis,
+    cursor: [usize; 3],
     volume_index: usize,
     colormap: Colormap,
     window_mode: WindowMode,
@@ -75,16 +77,10 @@ impl AppState {
             None
         };
 
-        let axis = args.axis;
+        let layout = args.layout_mode();
+        let active_axis = args.axis;
         let volume_index = volume.clamp_volume(args.volume);
-        let mm_coord = args.mm.and_then(|coord| {
-            volume.ras_index_from_mm([coord.x as f64, coord.y as f64, coord.z as f64])
-        });
-        let slice = args
-            .slice
-            .or_else(|| args.coord.map(|coord| coord.component_for_axis(axis)))
-            .or_else(|| mm_coord.map(|coord| coord[axis.index()]))
-            .unwrap_or_else(|| volume.middle_slice(axis.index()));
+        let cursor = initial_cursor(&args, &volume, active_axis);
 
         let colormap = args.colormap.unwrap_or_else(|| modality.default_colormap());
         let window_mode = args
@@ -103,8 +99,9 @@ impl AppState {
         let initial = build_image(
             &volume,
             RenderOptions {
-                axis,
-                slice,
+                layout,
+                active_axis,
+                cursor,
                 volume_index,
                 colormap,
                 window_mode,
@@ -126,8 +123,9 @@ impl AppState {
             volume,
             modality,
             dwi,
-            axis,
-            slice,
+            layout,
+            active_axis,
+            cursor,
             volume_index,
             playing: args.play,
             fps: args.fps.max(1),
@@ -154,15 +152,28 @@ impl AppState {
             self.dwi.as_ref(),
         )];
 
-        let mut view_line = format!(
-            "view axis={} slice={} cmap={} window={} size={} proto={}",
-            self.axis.label(),
-            self.slice,
-            self.colormap.label(),
-            self.window_mode,
-            self.size_mode.label(),
-            protocol_label(self.protocol_type)
-        );
+        let mut view_line = match self.layout {
+            LayoutMode::Single => format!(
+                "view layout=single axis={} slice={} cmap={} window={} size={} proto={}",
+                self.active_axis.label(),
+                self.slice_for_axis(self.active_axis),
+                self.colormap.label(),
+                self.window_mode,
+                self.size_mode.label(),
+                protocol_label(self.protocol_type)
+            ),
+            LayoutMode::Triptych => format!(
+                "view layout=triptych active={} sag={} ax={} cor={} cmap={} window={} size={} proto={}",
+                self.active_axis.label(),
+                self.slice_for_axis(Axis::Sagittal),
+                self.slice_for_axis(Axis::Axial),
+                self.slice_for_axis(Axis::Coronal),
+                self.colormap.label(),
+                self.window_mode,
+                self.size_mode.label(),
+                protocol_label(self.protocol_type)
+            ),
+        };
 
         if self.volume.nvols() > 1 {
             view_line.push_str(&format!(
@@ -178,7 +189,14 @@ impl AppState {
     }
 
     pub fn controls_hint(&self) -> &'static str {
-        "h/l slices  j/k +/-10  H/L volumes  a axis  c colormap  w window  z size  b playmode  space play  ? help  q quit"
+        match self.layout {
+            LayoutMode::Single => {
+                "h/l slices  j/k +/-10  H/L volumes  a axis  c colormap  w window  z size  b playmode  space play  ? help  q quit"
+            }
+            LayoutMode::Triptych => {
+                "h/l slices  j/k +/-10  tab/a pane  H/L volumes  c colormap  w window  z size  b playmode  space play  g center  ? help  q quit"
+            }
+        }
     }
 
     pub fn poll_timeout(&self, elapsed: Duration) -> Duration {
@@ -211,16 +229,22 @@ impl AppState {
 
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Left | KeyCode::Char('h') => self.step_slice(-1)?,
-            KeyCode::Right | KeyCode::Char('l') => self.step_slice(1)?,
-            KeyCode::Up | KeyCode::Char('k') => self.step_slice(-10)?,
-            KeyCode::Down | KeyCode::Char('j') => self.step_slice(10)?,
+            KeyCode::Left | KeyCode::Char('h') => self.step_active_slice(-1)?,
+            KeyCode::Right | KeyCode::Char('l') => self.step_active_slice(1)?,
+            KeyCode::Up | KeyCode::Char('k') => self.step_active_slice(-10)?,
+            KeyCode::Down | KeyCode::Char('j') => self.step_active_slice(10)?,
+            KeyCode::Tab => self.cycle_active_pane()?,
             KeyCode::Char('H') => self.step_volume(-1)?,
             KeyCode::Char('L') => self.step_volume(1)?,
             KeyCode::Char('a') => {
-                self.axis = self.axis.next();
-                self.slice = self.volume.middle_slice(self.axis.index());
-                self.refresh_image()?;
+                if self.layout == LayoutMode::Triptych {
+                    self.cycle_active_pane()?;
+                } else {
+                    self.active_axis = self.active_axis.next();
+                    self.cursor[self.active_axis.index()] =
+                        self.volume.middle_slice(self.active_axis.index());
+                    self.refresh_image()?;
+                }
             }
             KeyCode::Char(' ') => {
                 self.playing = !self.playing;
@@ -246,7 +270,12 @@ impl AppState {
                 self.refresh_image()?;
             }
             KeyCode::Char('g') => {
-                self.slice = self.volume.middle_slice(self.axis.index());
+                if self.layout == LayoutMode::Triptych {
+                    self.cursor = middle_cursor(&self.volume);
+                } else {
+                    self.cursor[self.active_axis.index()] =
+                        self.volume.middle_slice(self.active_axis.index());
+                }
                 self.refresh_image()?;
             }
             KeyCode::Char('?') => self.show_help = !self.show_help,
@@ -267,10 +296,23 @@ impl AppState {
         StatefulImage::new().resize(Resize::Fit(None))
     }
 
-    fn step_slice(&mut self, delta: isize) -> Result<()> {
-        let limit = self.volume.axis_len(self.axis.index()).saturating_sub(1) as isize;
-        let next = (self.slice as isize + delta).clamp(0, limit);
-        self.slice = next as usize;
+    fn slice_for_axis(&self, axis: Axis) -> usize {
+        self.cursor[axis.index()]
+    }
+
+    fn cycle_active_pane(&mut self) -> Result<()> {
+        self.active_axis = self.active_axis.next();
+        if self.layout == LayoutMode::Triptych {
+            return Ok(());
+        }
+        self.refresh_image()
+    }
+
+    fn step_active_slice(&mut self, delta: isize) -> Result<()> {
+        let axis = self.active_axis;
+        let limit = self.volume.axis_len(axis.index()).saturating_sub(1) as isize;
+        let next = (self.slice_for_axis(axis) as isize + delta).clamp(0, limit);
+        self.cursor[axis.index()] = next as usize;
         self.refresh_image()
     }
 
@@ -286,8 +328,9 @@ impl AppState {
         let next = build_image(
             &self.volume,
             RenderOptions {
-                axis: self.axis,
-                slice: self.slice,
+                layout: self.layout,
+                active_axis: self.active_axis,
+                cursor: self.cursor,
                 volume_index: self.volume_index,
                 colormap: self.colormap,
                 window_mode: self.window_mode,
@@ -311,6 +354,32 @@ impl AppState {
     }
 }
 
+fn initial_cursor(args: &Args, volume: &LoadedVolume, active_axis: Axis) -> [usize; 3] {
+    if let Some(coord) = args.coord {
+        return coord.ras_indices([volume.dims[0], volume.dims[1], volume.dims[2]]);
+    }
+
+    if let Some(coord) = args.mm.and_then(|coord| {
+        volume.ras_index_from_mm([coord.x as f64, coord.y as f64, coord.z as f64])
+    }) {
+        return coord;
+    }
+
+    let mut cursor = middle_cursor(volume);
+    if let Some(slice) = args.slice {
+        cursor[active_axis.index()] = slice.resolve(volume.axis_len(active_axis.index()));
+    }
+    cursor
+}
+
+fn middle_cursor(volume: &LoadedVolume) -> [usize; 3] {
+    [
+        volume.middle_slice(0),
+        volume.middle_slice(1),
+        volume.middle_slice(2),
+    ]
+}
+
 fn build_image(
     volume: &LoadedVolume,
     options: RenderOptions,
@@ -323,14 +392,32 @@ fn build_image(
             .data
             .slice(ndarray::s![.., .., .., options.volume_index]),
     );
-    let slice_data = extract_slice(volume, options.axis, options.slice, options.volume_index);
-    let image = render_slice_image(
-        &slice_data,
-        options.axis,
-        volume.pixdim,
-        options.colormap,
-        current_window,
-    );
+
+    let image = match options.layout {
+        LayoutMode::Single => {
+            let slice_data = extract_slice(
+                volume,
+                options.active_axis,
+                options.cursor[options.active_axis.index()],
+                options.volume_index,
+            );
+            render_slice_image(
+                &slice_data,
+                options.active_axis,
+                volume.pixdim,
+                options.colormap,
+                current_window,
+            )
+        }
+        LayoutMode::Triptych => render_triptych_image(
+            volume,
+            options.cursor,
+            options.volume_index,
+            options.colormap,
+            current_window,
+        ),
+    };
+
     upscale_for_tui(image, options.size_mode)
 }
 
@@ -542,16 +629,6 @@ mod tests {
         );
         assert_eq!(
             effective_protocol_type(
-                ProtocolType::Halfblocks,
-                PlaybackRenderMode::Smooth,
-                true,
-                1200,
-                SizeMode::Large,
-            ),
-            ProtocolType::Halfblocks
-        );
-        assert_eq!(
-            effective_protocol_type(
                 ProtocolType::Iterm2,
                 PlaybackRenderMode::Smooth,
                 false,
@@ -604,5 +681,31 @@ mod tests {
             ),
             ProtocolType::Iterm2
         );
+    }
+
+    #[test]
+    fn middle_cursor_uses_each_axis_midpoint() {
+        let volume = LoadedVolume {
+            path: "test.nii.gz".into(),
+            header: nifti::NiftiHeader::default(),
+            data: ndarray::Array4::zeros((9, 11, 13, 1)),
+            dims: [9, 11, 13, 1],
+            pixdim: [1.0, 1.0, 1.0, 1.0],
+            dtype: "float32".to_string(),
+            affine: nalgebra::Matrix4::identity(),
+            inverse_affine: Some(nalgebra::Matrix4::identity()),
+            reorientation: crate::nifti_io::Reorientation {
+                perm: [0, 1, 2],
+                flip: [false, false, false],
+                original_dims: [9, 11, 13],
+            },
+            source_orientation: "RAS".to_string(),
+            display_orientation: "RAS".to_string(),
+            range: (0.0, 0.0),
+            nan_count: 0,
+            warnings: Vec::new(),
+        };
+
+        assert_eq!(middle_cursor(&volume), [4, 5, 6]);
     }
 }

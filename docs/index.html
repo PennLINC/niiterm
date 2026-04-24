@@ -17,8 +17,9 @@
         <h1>niiterm</h1>
         <p class="lede">
           View NIfTI volumes directly in the terminal for fast neuroimaging QC.
-          Use it for one-shot slice checks, interactive scrubbing, or quick 4D
-          playback on SSH sessions, HPC nodes, and local workstations.
+          Use it for one-shot slice checks, static QC triptychs, interactive
+          scrubbing, linked tri-planar browsing, or quick 4D playback on SSH
+          sessions, HPC nodes, and local workstations.
         </p>
         <div class="hero__actions">
           <a href="#quick-start">Quick Start</a>
@@ -64,8 +65,11 @@ cargo install --path . --locked --root "$CONDA_PREFIX"</code></pre>
 
         <h3>Common commands</h3>
         <pre><code>niiterm sub-01_T1w.nii.gz
-niiterm --axis sagittal --slice 72 sub-01_T1w.nii.gz
+niiterm --axis sag --slice 25% sub-01_T1w.nii.gz
+niiterm --axis z --slice 0.25 sub-01_T1w.nii.gz
+niiterm --snapshot mid3 --width 50% sub-01_T1w.nii.gz
 niiterm --interactive sub-01_T1w.nii.gz
+niiterm --interactive --layout triptych sub-01_T1w.nii.gz
 niiterm --interactive --play sub-01_task-rest_bold.nii.gz
 niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz</code></pre>
 
@@ -162,7 +166,9 @@ niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz</code></pre>
         <p>
           Interactive mode is designed for quick QC, not just still rendering.
           You can scrub slices, switch axes, step through 4D volumes, and play
-          low-resolution timeseries while balancing detail against flicker.
+          low-resolution timeseries while balancing detail against flicker. For
+          structural QC, <code>--layout triptych</code> shows linked sagittal,
+          axial, and coronal panes together.
         </p>
 
         <div class="grid">
@@ -171,15 +177,16 @@ niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz</code></pre>
             <ul>
               <li><code>h</code> / <code>l</code> or left/right: previous or next slice</li>
               <li><code>j</code> / <code>k</code> or down/up: move slice by 10</li>
+              <li><code>Tab</code>: cycle the active pane in triptych layout</li>
               <li><code>H</code> / <code>L</code>: previous or next 4D volume</li>
-              <li><code>a</code>: cycle axis</li>
+              <li><code>a</code>: cycle axis in single-pane mode, or the active pane in triptych mode</li>
               <li><code>c</code>: cycle colormap</li>
               <li><code>w</code>: cycle window preset</li>
               <li><code>z</code>: cycle display size</li>
               <li><code>b</code>: cycle playback render mode</li>
               <li><code>space</code>: play or pause a 4D series</li>
               <li><code>+</code> / <code>-</code>: change playback FPS</li>
-              <li><code>g</code>: jump to the middle slice</li>
+              <li><code>g</code>: jump to the middle slice, or recenter all panes in triptych mode</li>
               <li><code>?</code>: toggle help</li>
               <li><code>q</code> or <code>esc</code>: quit</li>
             </ul>
@@ -198,6 +205,13 @@ niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz</code></pre>
               <li><code>auto</code>: keep detail at native size, switch to smoother block playback at larger sizes</li>
               <li><code>smooth</code>: prioritize smooth playback using block rendering</li>
               <li><code>detail</code>: keep the richer graphics protocol during playback and accept more flicker</li>
+            </ul>
+
+            <h3>Static QC snapshot</h3>
+            <ul>
+              <li><code>--snapshot mid3</code>: render a one-shot mid sagittal / axial / coronal triptych</li>
+              <li>Panel order is fixed as <code>sag|ax|cor</code></li>
+              <li><code>--width 50%</code> scales the one-shot output relative to terminal width</li>
             </ul>
           </div>
         </div>
@@ -234,12 +248,12 @@ niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz</code></pre>
               <td>Launch the interactive viewer instead of printing a single slice.</td>
             </tr>
             <tr>
-              <td><code>--axis &lt;axial|coronal|sagittal&gt;</code></td>
-              <td>Choose the initial viewing plane after RAS reorientation.</td>
+              <td><code>--axis &lt;axial|ax|z|coronal|cor|y|sagittal|sag|x&gt;</code></td>
+              <td>Choose the initial viewing plane or active pane after RAS reorientation.</td>
             </tr>
             <tr>
-              <td><code>--slice N</code></td>
-              <td>Choose the initial slice index in reoriented voxel space.</td>
+              <td><code>--slice SPEC</code></td>
+              <td>Choose the initial slice as an absolute index, percent like <code>25%</code>, or fraction like <code>0.25</code>.</td>
             </tr>
             <tr>
               <td><code>--coord X,Y,Z</code></td>
@@ -273,12 +287,20 @@ niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz</code></pre>
               </td>
             </tr>
             <tr>
-              <td><code>--width N</code></td>
-              <td>Requested width in terminal columns for one-shot rendering.</td>
+              <td><code>--width SPEC</code></td>
+              <td>One-shot width as absolute columns or a percentage like <code>50%</code>.</td>
             </tr>
             <tr>
               <td><code>--protocol auto|kitty|iterm|sixel|blocks</code></td>
               <td>Choose the rendering backend. Use <code>iterm</code> for WezTerm over SSH when needed.</td>
+            </tr>
+            <tr>
+              <td><code>--snapshot mid3</code></td>
+              <td>Render a static mid-slice sagittal/axial/coronal QC triptych in fixed <code>sag|ax|cor</code> order.</td>
+            </tr>
+            <tr>
+              <td><code>--layout single|triptych</code></td>
+              <td>Choose the interactive layout. <code>triptych</code> enables linked tri-planar browsing.</td>
             </tr>
             <tr>
               <td><code>--no-stats</code></td>
@@ -293,8 +315,11 @@ niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz</code></pre>
 
         <h3>Examples</h3>
         <pre><code>niiterm sub-01_T1w.nii.gz
-niiterm --axis sagittal --slice 72 sub-01_T1w.nii.gz
+niiterm --axis sag --slice 25% sub-01_T1w.nii.gz
+niiterm --axis z --slice 0.25 sub-01_T1w.nii.gz
 niiterm --coord 90,110,76 sub-01_T1w.nii.gz
+niiterm --snapshot mid3 --width 50% sub-01_T1w.nii.gz
+niiterm --interactive --layout triptych sub-01_T1w.nii.gz
 niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz
 niiterm --interactive --play --fps 12 sub-01_task-rest_bold.nii.gz
 niiterm --window p1,p99 --colormap turbo sub-01_cbf.nii.gz</code></pre>

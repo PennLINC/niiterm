@@ -5,7 +5,9 @@
 It supports:
 
 - Fast one-shot slice rendering in the terminal
+- Static mid-slice QC snapshots with `--snapshot mid3`
 - Interactive slice and volume scrubbing
+- Linked tri-planar interactive QC with `--layout triptych`
 - RAS reorientation so axial/coronal/sagittal behave consistently
 - 4D playback for BOLD, DWI, and ASL-style series
 - Modality-aware defaults for windowing, colormap, and interactive sizing
@@ -102,8 +104,10 @@ cargo install --path . --locked --root "$CONDA_PREFIX" --force
 
 ```bash
 niiterm sub-01_T1w.nii.gz
-niiterm --axis sagittal --slice 72 sub-01_T1w.nii.gz
+niiterm --axis sag --slice 25% sub-01_T1w.nii.gz
+niiterm --axis z --slice 0.25 sub-01_T1w.nii.gz
 niiterm --coord 90,110,76 sub-01_T1w.nii.gz
+niiterm --snapshot mid3 --width 50% sub-01_T1w.nii.gz
 niiterm --window p1,p99 --colormap turbo sub-01_cbf.nii.gz
 niiterm --protocol blocks sub-01_T1w.nii.gz
 ```
@@ -112,6 +116,7 @@ niiterm --protocol blocks sub-01_T1w.nii.gz
 
 ```bash
 niiterm --interactive sub-01_T1w.nii.gz
+niiterm --interactive --layout triptych sub-01_T1w.nii.gz
 niiterm --interactive --play sub-01_task-rest_bold.nii.gz
 niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz
 niiterm --interactive --volume 12 sub-01_dwi.nii.gz
@@ -129,25 +134,30 @@ niiterm --interactive --protocol iterm sub-01_task-rest_bold.nii.gz
 
 - `Left` / `Right` or `h` / `l`: previous / next slice
 - `Up` / `Down` or `j` / `k`: move slice by 10
+- `tab`: cycle the active pane in `--layout triptych`
 - `H` / `L`: previous / next 4D volume
-- `a`: cycle axis
+- `a`: cycle axis in single-pane mode, or cycle the active pane in triptych mode
 - `space`: play / pause 4D series
 - `+` / `-`: increase / decrease playback FPS
 - `c`: cycle colormap
 - `w`: cycle window preset
 - `z`: cycle interactive size (`native`, `comfortable`, `large`)
 - `b`: cycle playback rendering tradeoff (`auto`, `smooth`, `detail`)
-- `g`: jump to the middle slice
+- `g`: jump to the middle slice, or recenter all panes in triptych mode
 - `?`: toggle help
 - `q` or `esc`: quit
 
 ## Important Notes
 
 - `niiterm` reorients loaded data to RAS without resampling, so axis semantics stay stable across files.
+- `--axis` accepts `axial|ax|z`, `coronal|cor|y`, and `sagittal|sag|x`.
+- `--slice` accepts absolute indices like `72`, percentages like `25%`, and decimal fractions like `0.25`.
 - `--coord` is interpreted in reoriented voxel coordinates.
 - `--mm` is interpreted in world-space millimeters using the file affine and then mapped into the reoriented array.
 - DWI gradient metadata is loaded from sibling `<stem>.bval` and `<stem>.bvec` files when present.
-- `--width` affects one-shot rendering only. In the interactive viewer, use `z` to change the display size.
+- `--snapshot mid3` renders a static mid sagittal / axial / coronal QC triptych in fixed `sag|ax|cor` order.
+- `--width` affects one-shot rendering only and accepts absolute columns or percentages like `50%`. In the interactive viewer, use `z` to change the display size.
+- `--layout triptych` enables the linked tri-planar interactive view. Without it, interactive mode stays single-pane.
 - In interactive 4D playback, `b` lets you trade spatial detail for smoother animation.
 
 ## Media

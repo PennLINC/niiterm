@@ -3,11 +3,13 @@ use image::DynamicImage;
 use viuer::Config as ViuerConfig;
 use viuer::KittySupport;
 
-use crate::cli::{Args, Protocol};
+use crate::cli::{Args, Protocol, SnapshotMode};
 use crate::dwi;
 use crate::modality::Modality;
 use crate::nifti_io::load_nifti;
-use crate::render::{extract_slice, render_slice_image};
+use crate::render::{
+    extract_slice, render_slice_image, render_triptych_image, triptych_order_label,
+};
 use crate::stats::format_stats_line;
 use crate::windowing::{WindowCache, WindowMode};
 
@@ -29,33 +31,78 @@ pub fn run(args: Args) -> Result<()> {
         .unwrap_or_else(|| modality.default_window());
 
     let volume_index = volume.clamp_volume(args.volume);
-    let ras_coord = args.mm.and_then(|coord| {
-        volume.ras_index_from_mm([coord.x as f64, coord.y as f64, coord.z as f64])
-    });
-    let slice_index = args
-        .slice
-        .or_else(|| args.coord.map(|coord| coord.component_for_axis(args.axis)))
-        .or_else(|| ras_coord.map(|coord| coord[args.axis.index()]))
-        .unwrap_or_else(|| volume.middle_slice(args.axis.index()));
+    let resolved_width = args.width.map(resolve_width_spec);
 
-    let slice = extract_slice(&volume, args.axis, slice_index, volume_index);
     let mut cache = WindowCache::default();
     let window = cache.get_or_insert(
         volume_index,
         window_mode,
         volume.data.slice(ndarray::s![.., .., .., volume_index]),
     );
-    let image = render_slice_image(&slice, args.axis, volume.pixdim, colormap, window);
-    let image = prepare_for_terminal(&image, args.width, args.protocol);
+
+    let image = match args.snapshot {
+        Some(SnapshotMode::Mid3) => render_triptych_image(
+            &volume,
+            [
+                volume.middle_slice(0),
+                volume.middle_slice(1),
+                volume.middle_slice(2),
+            ],
+            volume_index,
+            colormap,
+            window,
+        ),
+        None => {
+            let slice_index = resolve_single_slice(&args, &volume);
+            let slice = extract_slice(&volume, args.axis, slice_index, volume_index);
+            render_slice_image(&slice, args.axis, volume.pixdim, colormap, window)
+        }
+    };
+    let image = prepare_for_terminal(&image, resolved_width, args.protocol);
 
     if args.show_stats() {
         println!(
             "{}",
-            format_stats_line(&volume, modality, volume_index, dwi.as_ref())
+            header_line(&args, &volume, modality, volume_index, dwi.as_ref())
         );
     }
 
-    print_image(&image, args.width, args.protocol).context("failed to render image to terminal")
+    print_image(&image, resolved_width, args.protocol).context("failed to render image to terminal")
+}
+
+fn resolve_single_slice(args: &Args, volume: &crate::nifti_io::LoadedVolume) -> usize {
+    let mm_coord = args.mm.and_then(|coord| {
+        volume.ras_index_from_mm([coord.x as f64, coord.y as f64, coord.z as f64])
+    });
+
+    args.slice
+        .map(|spec| spec.resolve(volume.axis_len(args.axis.index())))
+        .or_else(|| args.coord.map(|coord| coord.component_for_axis(args.axis)))
+        .or_else(|| mm_coord.map(|coord| coord[args.axis.index()]))
+        .unwrap_or_else(|| volume.middle_slice(args.axis.index()))
+}
+
+fn header_line(
+    args: &Args,
+    volume: &crate::nifti_io::LoadedVolume,
+    modality: Modality,
+    volume_index: usize,
+    dwi: Option<&crate::dwi::DwiMetadata>,
+) -> String {
+    let mut line = format_stats_line(volume, modality, volume_index, dwi);
+    if let Some(snapshot) = args.snapshot {
+        line.push_str(&format!(
+            "  snapshot={} order={}",
+            snapshot.label(),
+            triptych_order_label()
+        ));
+    }
+    line
+}
+
+fn resolve_width_spec(spec: crate::cli::WidthSpec) -> u32 {
+    let (terminal_width, _) = crossterm::terminal::size().unwrap_or((80, 24));
+    spec.resolve(terminal_width as u32)
 }
 
 fn prepare_for_terminal(
